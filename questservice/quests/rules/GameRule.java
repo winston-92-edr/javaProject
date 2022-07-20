@@ -1,0 +1,47 @@
+package com.mynet.questservice.quests.rules;
+
+import com.mynet.questservice.QuestController;
+import com.mynet.questservice.quests.category.GameEndCategoryInfo;
+import com.mynet.questservice.quests.models.QuestModel;
+import com.mynet.questservice.quests.models.QuestUser;
+import com.mynet.questservice.quests.models.UserQuestModel;
+import com.mynet.questservice.quests.types.ExpSourceType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class GameRule implements QuestRule {
+    private static Logger logger = LoggerFactory.getLogger(GameRule.class);
+
+    @Override
+    public void check(QuestModel model, String info, int day) {
+        try {
+            QuestController questController = QuestController.getInstance();
+
+            GameEndCategoryInfo gameEndCategoryInfo = QuestController.getGson().fromJson(info, GameEndCategoryInfo.class);
+
+            QuestUser user = questController.getUser(gameEndCategoryInfo.getUserId());
+
+            if(user == null) return;
+
+
+           if (questController.invalidQuestDay(model)) return;
+
+            UserQuestModel quest = user.getAndCreateQuest(model.getId());
+            if (quest.getPoint() == model.getGoal()) return;
+
+            int updatedPoint = quest.increment();
+            if(user.getQuest(quest.getQuestId()) != null) user.getQuest(quest.getQuestId()).setPoint(updatedPoint);
+
+            questController.addUpdateUserQuestQuery(user.getId(), model.getId(), updatedPoint);
+
+            boolean complete = quest.isComplete();
+
+            if (complete) {
+               ExpSourceType source = model.isDaily() ? ExpSourceType.DAILY : ExpSourceType.SEASONAL;
+               questController.updateUserXp(model, user, quest,source);
+            }
+        } catch (Exception e) {
+            logger.error("Error at GameRule>> " + e.getMessage());
+        }
+    }
+}
